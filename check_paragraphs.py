@@ -36,6 +36,14 @@ row = db.get_sentences(pid, tmp)[0]
 assert row["section"] == "Introduction" and row["paragraph"] == 0, row
 print("OK")
 
+# duplicates: the same sentences again (re-spaced, another file name) are caught; a different paper is not
+texts = [s["text"] for s in sents]
+dup = db.find_duplicate([t.replace(" ", "  ") for t in texts], tmp)
+assert dup and dup["id"] == pid and dup["share"] == 1.0, dup
+other = [f"Sentence number {w} of an unrelated paper about ants and their foraging trails." for w in "abcdefgh"]
+assert db.find_duplicate(other, tmp) is None and db.find_duplicate(texts[:3], tmp) is None
+print("DUPLICATES OK")
+
 # figures: one real picture on page 2, one tiny icon that must be ignored
 from pdf_to_sentences import page_images
 big = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 300, 200)); big.clear_with(120)

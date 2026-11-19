@@ -37,6 +37,9 @@ PLAIN = ("Background", "Methods", "Unlabeled")      # shown as ordinary text in 
 # at 0.6 the highlights shown match your labels 80% of the time (82% on research papers), but only about
 # half of the real Results/Conclusions get highlighted. Re-measure after adding many more labelled papers.
 MIN_CONFIDENCE = 0.6
+# Measured: papers without standard headings (reviews, short reports) get noticeably worse labels.
+NO_HEADINGS = ("No standard section headings (Introduction, Methods, Results, Discussion) were found in this "
+               "paper, so its labels are less reliable. This is common for reviews and short reports.")
 
 # Click a sentence in Read (or select several) -> a small menu -> your label goes back to Python.
 LABEL_MENU = st.components.v2.component(
@@ -350,6 +353,10 @@ def add_pdf(data: bytes, name: str) -> tuple[str, list[dict]]:
         raise ValueError(f"No text found in **{name}**. It may be a scanned PDF (images only).")
     if title.casefold() in {p["title"].casefold() for p in saved}:   # same paper under another file name
         raise ValueError(f"Skipped **{name}**: you already have **{title}**.")
+    dup = db.find_duplicate([s["text"] for s in sentences])   # same paper, other file name and title
+    if dup:
+        raise ValueError(f"Skipped **{name}**: {dup['share']:.0%} of the shorter paper's sentences also appear in "
+                         f"**{dup['title']}** (#{dup['id']}), already saved. It looks like the same paper.")
     labeled = label_sentences(get_model(), [s["text"] for s in sentences], [s.get("section") for s in sentences])
     for s, (label, confidence) in zip(sentences, labeled):
         s.update(label=label, confidence=confidence, hedged=is_hedged(s["text"]))
@@ -386,6 +393,8 @@ with tab_add:
             st.success(f"Saved **{title}**: {len(sentences)} sentences, {n_hedged} hedged.")
             st.markdown(" ".join(f"{chip(l)} {counts[l]}&nbsp;&nbsp;" for l in LABELS),
                         unsafe_allow_html=True)
+            if not any(s.get("section") for s in sentences):
+                st.warning(NO_HEADINGS)
         papers = db.list_papers()
 
     st.divider()
@@ -490,13 +499,16 @@ with tab_read:
 
         pid = by_name[picked]
         refs = references(pdf, pdf.stat().st_mtime) if pdf.exists() else []
-        texts = [s["text"] for s in db.get_sentences(pid)]
+        sentences = db.get_sentences(pid)
+        texts = [s["text"] for s in sentences]
         counts = [mentions(r, texts) for r in refs]
         # The sources this paper leans on most, to look up, download and upload.
         top = sorted((i for i in range(len(refs)) if counts[i] >= 2), key=lambda i: -counts[i])[:8]
+        if sentences and not any(s["section"] for s in sentences):
+            st.warning(NO_HEADINGS)
 
         parts, section, paragraph, page = [], "", None, None
-        for s in db.get_sentences(pid):
+        for s in sentences:
             if s["label"] in LABELS and s["label"] not in show:
                 continue
             if page is not None and s["page"] != page:

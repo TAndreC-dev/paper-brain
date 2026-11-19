@@ -65,7 +65,27 @@ strong clue that a sentence is a Result.
 
 ## Results
 
-Accuracy was measured on the PubMed RCT test set (abstracts of randomized controlled trials) and may differ on other kinds of papers.
+**On abstracts:** about 87% (86.85%) on the PubMed RCT test set, which holds only abstracts of
+randomized controlled trials.
+
+**On full papers:** 1,215 hand-labelled sentences in 8 full papers. Each paper is tested by a model
+that never saw its labels (`python retrain.py`):
+
+| Model | Held-out accuracy |
+|---|---:|
+| PubMed only | 57.4% |
+| Retrained with my labels | 66.3% |
+| + context (section, place in the paper, neighbouring sentences) | 67.3% |
+| + context + rule features (citations, figure legends, interpreting words) | **70.0%** |
+
+It works best on standard research articles (Introduction, Methods, Results, Discussion) and less
+well on reviews and reports, which often have no standard headings. Per-paper scores vary by
+about ±10 points, so one paper's score is only a rough guide.
+
+Learning curve: retrained on 2, 4, 6 and 7 papers it scored 59.4%, 64.3%, 65.8% and 66.3%, so
+more labels still help, but each extra paper adds less.
+
+PubMed details:
 
 | What | Value |
 |---|---|
@@ -75,9 +95,6 @@ Accuracy was measured on the PubMed RCT test set (abstracts of randomized contro
 | Test accuracy (baseline) | **86.85%** |
 | Test accuracy (PyTorch, if built) | not built yet |
 | Most-confused label pair | Methods vs Results (1,149 test sentences) |
-| Papers loaded | fill in |
-| Sentences stored | fill in |
-| One thing it helped you find | fill in |
 
 Confusion matrix on test (rows = true label, columns = predicted):
 
@@ -129,9 +146,10 @@ The Read tab shows them under "Labelling rules". Highlight PDFs and correct in R
 ## Retraining on your own papers
 
 `python retrain.py` holds out each paper you labelled by hand in turn, predicts its labels
-with a model that never saw them, and compares three things: the original PubMed-only
-model, a model retrained with your labels, and that model plus context (section, place in
-the paper, neighbouring sentences). `python retrain.py --apply` saves the best one and
+with a model that never saw them, and compares four things: the original PubMed-only
+model, a model retrained with your labels, that model plus context (section, place in
+the paper, neighbouring sentences), and context plus rule features (citations, figure
+legends, interpreting words). `python retrain.py --apply` saves the best one and
 relabels `brain.db` only if it beats the original. Restart the app afterwards. To go back:
 copy `models/classifier.pubmed.joblib` over `models/classifier.joblib` and `brain.backup.db`
 over `brain.db`.
@@ -139,8 +157,7 @@ over `brain.db`.
 `python import_highlights.py "highlighted.pdf" PAPER_ID --apply` saves the colours of a
 highlighted copy of a paper as your own labels (see the top of that file for the colours).
 
-Held-out accuracy on 1,218 hand labels across 8 papers: original 57.4%, retrained 66.6%,
-with context 67.3%. Research papers score 64-80%; reviews and clinical guides 42-47%.
+The measured numbers are under "Results" above.
 Tried and dropped: labels made from section headings (lowered the score by 5 points once
 there were enough hand labels) and a small local language model (fingerprints alone scored
 7 points below word counts).

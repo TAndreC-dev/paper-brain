@@ -206,6 +206,36 @@ def get_sentences(paper_id: int, db_path: Path | str = DB_PATH) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def find_duplicate(texts: list[str], db_path: Path | str = DB_PATH, share: float = 0.5) -> dict | None:
+    """The saved paper that shares at least `share` of the shorter paper's sentences with these, or None.
+
+    Catches the same paper saved under another file name and with a garbled title, in either
+    direction (a preprint inside the longer published version, or the reverse). Sentences are
+    compared by their letters only, so spacing, ligatures and hyphens don't hide a match.
+    shortcut: reads every saved sentence; fine for thousands of papers, index a hash column beyond that.
+    """
+    def key(t: str) -> str:
+        return re.sub(r"[^a-z]", "", t.lower())
+    new = {key(t) for t in texts} - {""}
+    if len(new) < 5:          # too little text to judge
+        return None
+    conn = connect(db_path)
+    hits: dict[int, set[str]] = {}
+    sizes: dict[int, set[str]] = {}
+    for paper_id, text in conn.execute("SELECT paper_id, text FROM sentences"):
+        k = key(text)
+        sizes.setdefault(paper_id, set()).add(k)
+        if k in new:
+            hits.setdefault(paper_id, set()).add(k)
+    overlap = {p: len(h) / max(min(len(new), len(sizes[p])), 5) for p, h in hits.items()}
+    best = max(overlap, key=overlap.get, default=None)
+    row = conn.execute("SELECT id, title FROM papers WHERE id = ?", (best,)).fetchone() if best else None
+    conn.close()
+    if row is None or overlap[best] < share:
+        return None
+    return {"id": row["id"], "title": row["title"], "share": overlap[best]}
+
+
 def stats(db_path: Path | str = DB_PATH) -> dict:
     conn = connect(db_path)
     papers = conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]

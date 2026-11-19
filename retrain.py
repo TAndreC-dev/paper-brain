@@ -5,9 +5,12 @@
 
 How it is scored: every paper you labelled by hand (in Read, or with import_highlights.py) is
 held out in turn. A model that has not seen that paper's labels predicts them, and the
-predictions are compared with yours. Three things are compared: the original PubMed-only
-model, the retrained text model, and the retrained text model plus context (section, place
-in the paper, neighbouring sentences). The best one is kept.
+predictions are compared with yours. Four things are compared: the original PubMed-only
+model, the retrained text model, the retrained text model plus context (section, place
+in the paper, neighbouring sentences), and context plus rule clues (cites others, figure
+legend, interprets: see rule_features in train.py). The best one is kept.
+
+Measuring only reads the database. Set PAPER_BRAIN_DB to measure on a copy.
 
 Training sentences: PubMed RCT, your hand labels (counted heavily), and optionally
 heading-made labels (a sentence under "Materials and methods" is Methods, ...) from papers
@@ -24,7 +27,7 @@ import joblib
 import numpy as np
 
 import db
-from train import DATA_DIR, LABELS, MODEL_PATH, context_features, label_sentences, load_split, normalize
+from train import DATA_DIR, LABELS, MODEL_PATH, context_features, label_sentences, load_split, normalize, rule_features
 
 ORIGINAL_PATH = MODEL_PATH.with_name("classifier.pubmed.joblib")   # the PubMed-only model, kept to compare and revert
 # One heading-labelled sentence counts as this many PubMed sentences. 0 = do not use them: with
@@ -70,7 +73,8 @@ def main() -> None:
     original = joblib.load(ORIGINAL_PATH)
     C = original.named_steps["clf"].C
 
-    conn = db.connect()
+    conn = sqlite3.connect(db.DB_PATH.as_uri() + "?mode=ro", uri=True)   # measuring never writes
+    conn.row_factory = sqlite3.Row
     rows = [dict(r) for r in conn.execute("SELECT id, paper_id, text, label, section, corrected FROM sentences "
                                           "ORDER BY paper_id, position")]
     conn.close()
@@ -111,39 +115,43 @@ def main() -> None:
         probs = blind.predict_proba([normalize(r["text"]) for r in rs])
         keep = [i for i, r in enumerate(rs) if hand(r)]
         y = [hand(rs[i]) for i in keep]
-        feats[p] = (context_features(probs, [r["section"] for r in rs])[keep], y,
+        ctx = context_features(probs, [r["section"] for r in rs])[keep]
+        feats[p] = (ctx, np.hstack([ctx, rule_features([rs[i]["text"] for i in keep])]), y,
                     [str(blind.classes_[j]) for j in probs[keep].argmax(axis=1)],
                     [l for l, _ in label_sentences(original, [rs[i]["text"] for i in keep])])
         print(f"  trained without paper #{p}", flush=True)
 
-    # The context model learns from the other papers' predictions-plus-context, then is tested on this one.
+    def stacker(papers: list[int], which: int):   # which: 0 = context, 1 = context + rules
+        return LogisticRegression(max_iter=2000).fit(np.vstack([feats[q][which] for q in papers]),
+                                                     [l for q in papers for l in feats[q][2]])
+
+    # The context models learn from the other papers' predictions-plus-context, then are tested on this one.
     # shortcut: those other papers' predictions came from text models that did see the test paper,
     # a small leak in context's favour; do a fully nested test if context only wins narrowly.
-    old_hits = text_hits = ctx_hits = n = 0
+    old_hits = text_hits = ctx_hits = rule_hits = n = 0
     for p in hand_papers:
         others = [q for q in hand_papers if q != p]
-        clf = LogisticRegression(max_iter=2000).fit(np.vstack([feats[q][0] for q in others]),
-                                                    [l for q in others for l in feats[q][1]])
-        x, y, text_pred, old_pred = feats[p]
-        o, t, c = (sum(a == b for a, b in zip(pred, y)) for pred in (old_pred, text_pred, clf.predict(x)))
-        print(f"  paper #{p}: {len(y):>3} hand labels | old {o / len(y):.3f}  text {t / len(y):.3f}  with context {c / len(y):.3f}")
-        old_hits, text_hits, ctx_hits, n = old_hits + o, text_hits + t, ctx_hits + c, n + len(y)
+        ctx, ctx_rules, y, text_pred, old_pred = feats[p]
+        o, t, c, r = (sum(a == b for a, b in zip(pred, y)) for pred in
+                      (old_pred, text_pred, stacker(others, 0).predict(ctx), stacker(others, 1).predict(ctx_rules)))
+        print(f"  paper #{p}: {len(y):>3} hand labels | old {o / len(y):.3f}  text {t / len(y):.3f}  "
+              f"with context {c / len(y):.3f}  context+rules {r / len(y):.3f}")
+        old_hits, text_hits, ctx_hits, rule_hits, n = old_hits + o, text_hits + t, ctx_hits + c, rule_hits + r, n + len(y)
     print(f"\nHELD-OUT HAND LABELS ({n}): old {old_hits / n:.3f} | retrained text {text_hits / n:.3f} | "
-          f"with context {ctx_hits / n:.3f}", flush=True)
+          f"with context {ctx_hits / n:.3f} | context+rules {rule_hits / n:.3f}", flush=True)
 
-    use_context = ctx_hits > text_hits
-    better = max(text_hits, ctx_hits) > old_hits + 0.01 * n
-    print("VERDICT:", f"retrained model is better ({'with' if use_context else 'without'} context)" if better
-          else "no clear improvement: keeping the old model")
+    best_hits, kind = max((text_hits, "text"), (ctx_hits, "context"), (rule_hits, "context+rules"))
+    better = best_hits > old_hits + 0.01 * n
+    print("VERDICT:", f"retrained model is better ({kind})" if better else "no clear improvement: keeping the old model")
     if not better or "--apply" not in sys.argv:
         return
 
     final = train()
     print(f"PUBMED TEST: old {accuracy(original, test_x, test_y):.3f} -> retrained {accuracy(final, test_x, test_y):.3f}")
     model = final
-    if use_context:
-        model = {"text": final, "context": LogisticRegression(max_iter=2000).fit(
-            np.vstack([feats[p][0] for p in hand_papers]), [l for p in hand_papers for l in feats[p][1]])}
+    if kind != "text":
+        rules = kind == "context+rules"
+        model = {"text": final, "context": stacker(hand_papers, int(rules)), "rules": rules}
     joblib.dump(model, MODEL_PATH, compress=3)
     # Relabel the library with the new model; your own labels are left alone.
     src, dst = sqlite3.connect(db.DB_PATH), sqlite3.connect(db.DB_PATH.with_name("brain.backup.db"))

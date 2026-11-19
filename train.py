@@ -107,6 +107,34 @@ def context_features(probs, sections: list[str | None]):
 
 assert section_kind("Materials and Methods") == "methods" and section_kind("Results And Discussion") == "results+discussion"
 
+# The labelling rules in README.md, as yes/no clues the context model can weigh.
+# Rule 4: someone else's finding ("Xu et al.", "(Smith, 2010)", "[12]", "previously reported") -> Background.
+_CITATION = re.compile(
+    r"\bet al\b|\([A-Z][\w'’\-]+[^()]{0,60}?\b(?:19|20)\d\d[a-z]?\s*[;,)]|\[\d{1,3}(?:\s*[,–-]\s*\d{1,3})*\]"
+    r"|\b(?:previous(?:ly)?|earlier|recent(?:ly)?)\s+(?:stud|report|work|show|describ|found)\w*"
+    r"|\b(?:has|have) been (?:shown|reported|described|proposed|suggested)\b")
+# Rule 3: figure legends and how-it-was-done notes -> Methods.
+_LEGEND = re.compile(
+    r"^\s*(?:\([A-L]\)|(?:Supplementa\w+ )?(?:Fig(?:ure)?|Table)\.?\s*S?\d+[A-Z]?\s*[.:|])"
+    r"|\b(?:error bars|scale bars?|bars (?:represent|indicate|show)|asterisks? (?:indicate|denote)"
+    r"|mean\s*±\s*(?:SD|SE|SEM)|values are means?)\b", re.IGNORECASE)
+# Rule 1: a sentence that interprets -> Conclusions.
+_INTERPRET = re.compile(
+    r"\b(?:therefore|thus|hence|indicat\w*|suggest\w*|support\w*|impl(?:y|ies|ied|ication\w*)|conclu\w+"
+    r"|consistent with|we propose|likely|may|might|could|possibl\w*|potential\w*|appears? to|seems? to)\b",
+    re.IGNORECASE)
+
+
+def rule_features(sentences: list[str]):
+    """One row per sentence: [cites others, figure legend, interprets], each 0 or 1."""
+    import numpy as np
+    return np.array([[bool(p.search(s)) for p in (_CITATION, _LEGEND, _INTERPRET)] for s in sentences], dtype=float)
+
+
+assert rule_features(["As shown by Xu et al., light resets the clock.", "(B) Error bars represent SD of three replicates.",
+                      "These data suggest that XCT acts upstream.", "Plants were grown at 22 C."]).tolist() == \
+    [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]]
+
 
 def label_sentences(model, sentences: list[str], sections: list[str | None] | None = None) -> list[tuple[str, float]]:
     """Return (label, confidence) for each sentence.
@@ -119,7 +147,11 @@ def label_sentences(model, sentences: list[str], sections: list[str | None] | No
     text_model = model["text"] if isinstance(model, dict) else model
     probs, classes = text_model.predict_proba([normalize(s) for s in sentences]), text_model.classes_
     if isinstance(model, dict) and sections is not None:
-        probs, classes = model["context"].predict_proba(context_features(probs, sections)), model["context"].classes_
+        x = context_features(probs, sections)
+        if model.get("rules"):   # models saved before rule features existed don't have the extra columns
+            import numpy as np
+            x = np.hstack([x, rule_features(sentences)])
+        probs, classes = model["context"].predict_proba(x), model["context"].classes_
     best = probs.argmax(axis=1)
     return [(str(classes[i]), float(p[i])) for i, p in zip(best, probs)]
 
