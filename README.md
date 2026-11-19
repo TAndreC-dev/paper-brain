@@ -73,10 +73,15 @@ that never saw its labels (`python retrain.py`):
 
 | Model | Held-out accuracy |
 |---|---:|
-| PubMed only | 57.4% |
-| Retrained with my labels | 66.3% |
+| PubMed only (what a fresh install uses) | 57.4% |
+| Retrained with the author's hand labels | 66.3% |
 | + context (section, place in the paper, neighbouring sentences) | 67.3% |
-| + context + rule features (citations, figure legends, interpreting words) | **70.0%** |
+| + context + rule features (citations, figure legends, interpreting words) | 70.0% |
+
+**What you get:** a fresh install labels sentences with the PubMed-only model, which scored about
+57% on full papers. The higher numbers come from retraining on hand-labelled papers with
+`python retrain.py` (see "Retraining on your own papers" below). They were measured on the
+author's own 8 papers, so your results after labelling your papers will differ.
 
 It works best on standard research articles (Introduction, Methods, Results, Discussion) and less
 well on reviews and reports, which often have no standard headings. Per-paper scores vary by
@@ -161,3 +166,7 @@ The measured numbers are under "Results" above.
 Tried and dropped: labels made from section headings (lowered the score by 5 points once
 there were enough hand labels) and a small local language model (fingerprints alone scored
 7 points below word counts).
+
+## Credits
+
+**Training data.** The classifier is trained on the PubMed 20k RCT dataset: Franck Dernoncourt and Ji Young Lee, "PubMed 200k RCT: a Dataset for Sequential Sentence Classification in Medical Abstracts," IJCNLP 2017 (arXiv:1710.06071), downloaded by `download_data.py` from https://github.com/Franck-Dernoncourt/pubmed-rct. The abstracts come from MEDLINE/PubMed, courtesy of the U.S. National Library of Medicine; some may be protected by copyright. NLM does not endorse this project, and this copy of the data may not be the most current.
