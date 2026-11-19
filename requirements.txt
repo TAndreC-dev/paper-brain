@@ -1,0 +1,7 @@
+# Tested with Python 3.11. Exact versions so the app and saved models behave the same everywhere.
+pymupdf==2.1
+scikit-learn==1.9.1
+joblib==1.6.0
+numpy==2.4.6
+streamlit==1.67.0
+requests==2.34.2

@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+data/
+brain.db
+papers/
+brain.backup.db
+
+# Built or personal: never publish
+models/
+*.joblib
+*.db
+*.db.tmp
+*.pdf
+graphify-out/
+.claude/
