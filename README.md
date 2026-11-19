@@ -13,7 +13,7 @@ title and page attached. It cannot hallucinate an answer because it never writes
 Needs Python 3.11.
 
 ```bash
-python -m venv .venv
+py -3.11 -m venv .venv          # Windows;  python3.11 -m venv .venv on Mac/Linux
 .venv\Scripts\activate          # Windows;  source .venv/bin/activate on Mac/Linux
 pip install -r requirements.txt
 python train.py                 # once, about 4 minutes
@@ -64,6 +64,8 @@ strong clue that a sentence is a Result.
 `WHERE` clauses. Porter stemming lets "reduce" match "reduced".
 
 ## Results
+
+Accuracy was measured on the PubMed RCT test set (abstracts of randomized controlled trials) and may differ on other kinds of papers.
 
 | What | Value |
 |---|---|
