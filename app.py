@@ -264,8 +264,8 @@ def squash(text: str) -> str:
 
 @lru_cache(maxsize=None)
 def title_pattern(title: str) -> re.Pattern:
-    # The whole title, between punctuation: "The plant immune system" must not match
-    # "Pivoting the plant immune system from dissection to deployment".
+    # The whole title, between punctuation: "Leaf growth in the cold" must not match
+    # "Rethinking leaf growth in the cold from the lab to the field".
     return re.compile(r"(?:^|[.)\]:,])\W*" + r"\W*".join(squash(title)) + r"\W*(?:[.?!]|$)", re.IGNORECASE)
 
 
