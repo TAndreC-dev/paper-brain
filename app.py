@@ -244,7 +244,7 @@ if (!window.pbDrag) {
 </script>""", unsafe_allow_javascript=True)
 
 
-PAPERS_DIR = Path(__file__).parent / "papers"   # a copy of every uploaded PDF is kept here
+PAPERS_DIR = db.DB_PATH.parent / "papers"   # a copy of every uploaded PDF is kept next to the database in use
 
 
 @st.cache_data(show_spinner=False)
@@ -344,7 +344,7 @@ def add_pdf(data: bytes, name: str) -> tuple[str, list[dict]]:
     name = Path(name).name                       # no folders from the upload
     saved = db.list_papers()
     if name in {p["filename"] for p in saved}:
-        raise ValueError(f"**{name}** is already saved. Skipped.")
+        raise ValueError(f"A file named **{name}** is already saved. Rename this one and upload it again.")
     try:
         title, sentences = pdf_to_sentences(data, filename=name)
     except Exception as e:
@@ -409,7 +409,9 @@ with tab_add:
                           f"<span class='pb-meta'>{html.escape(p['filename'])} · "
                           f"{p['n_sentences']} sentences · added {p['added_at'][:10]}</span>",
                           unsafe_allow_html=True)
-        if col_del.button("Delete", key=f"del{p['id']}"):
+        # Two steps: deleting also removes your own labels, which nothing can rebuild.
+        if col_del.popover("Delete").button(f"Delete for good ({p['n_mine']} of your labels)",
+                                            key=f"del{p['id']}", type="primary"):
             db.delete_paper(p["id"])
             (PAPERS_DIR / Path(p["filename"]).name).unlink(missing_ok=True)
             st.rerun()
@@ -456,10 +458,12 @@ LABELLING_RULES = """
 
 
 @st.fragment   # a pick reruns only this bit: the menu has already recoloured the sentence in the page
-def label_menu() -> None:
+def label_menu(blind: bool = False) -> None:
+    # Hiding model labels: your own picks show in colour (plain ones too), so you can see what you've done.
     pick = LABEL_MENU(key="label_menu", on_pick_change=lambda: None, data={"options": [
-        [label, text, COLORS[label][0], "" if label in PLAIN else COLORS[label][1]] for label, text in
-        [(l, l) for l in MARKS] + [("Background", "Background (plain)"), ("Unlabeled", "Remove highlight")]]}).pick
+        [label, text, COLORS[label][0], COLORS[label][1] if blind or label not in PLAIN else ""] for label, text in
+        [(l, l) for l in MARKS] + [("Methods", "Methods"), ("Background", "Background (plain)"),
+                                   ("Unlabeled", "Remove highlight")]]}).pick
     if pick and pick.get("label") in COLORS and pick.get("ids"):
         db.set_labels(pick["ids"], pick["label"])
 
@@ -472,10 +476,14 @@ with tab_read:
     else:
         by_name = {f"{p['title']} (#{p['id']})": p["id"] for p in papers}
         picked = st.selectbox("Paper (type any word of the title to search)", list(by_name), key="read_paper")
-        show = st.multiselect("Show labels", LABELS, default=LABELS)
-        if st.button("Search keywords"):   # shows or hides the floating panel
+        blind = st.checkbox("Hide model labels while I label", key="blind",
+                            help="Unlabelled sentences show as plain text and tooltips hide the model's guess. "
+                                 "Your own labels still show in their colours.")
+        # The label filter and keyword panel would reveal the model's guesses, so they are off while hiding.
+        show = st.multiselect("Show labels", LABELS, default=LABELS, disabled=blind)
+        if st.button("Search keywords", disabled=blind):   # shows or hides the floating panel
             st.session_state["kw_open"] = not st.session_state.get("kw_open", False)
-        if st.session_state.get("kw_open"):
+        if st.session_state.get("kw_open") and not blind:
             keyword_panel(by_name[picked])
         st.markdown(" ".join(chip(l) for l in MARKS) +
                     ' <span class="pb-meta">background and methods are plain text ·</span>'
@@ -484,7 +492,7 @@ with tab_read:
         st.caption("Wrong highlight? Click a sentence, or select several, and pick the right label or remove it.")
         with st.expander("Labelling rules (keep your corrections consistent)"):
             st.markdown(LABELLING_RULES)
-        label_menu()
+        label_menu(blind)
         filename = next(p["filename"] for p in papers if p["id"] == by_name[picked])
         pdf = PAPERS_DIR / Path(filename).name
         figs = dict(figures(pdf, pdf.stat().st_mtime)) if pdf.exists() else {}   # page -> images still to place
@@ -509,7 +517,7 @@ with tab_read:
 
         parts, section, paragraph, page = [], "", None, None
         for s in sentences:
-            if s["label"] in LABELS and s["label"] not in show:
+            if not blind and s["label"] in LABELS and s["label"] not in show:
                 continue
             if page is not None and s["page"] != page:
                 place_figures(page)         # a page's figures go after its last sentence
@@ -526,10 +534,14 @@ with tab_read:
                 page = s["page"]
                 parts.append(f'<span class="pb-pageno">p.{page}</span>')
             label = s["label"]
-            unsure = not s["corrected"] and s["confidence"] < MIN_CONFIDENCE
-            style = "" if label in PLAIN or unsure else f' style="background:{COLORS[label][1]}"'
-            tip = f'{label} · ' + ("set by you" if s["corrected"]
-                                   else f'{s["confidence"]:.0%} confident' + (", too unsure to highlight" * unsure))
+            if blind:   # only your own labels are shown; the model's guess stays hidden
+                style = f' style="background:{COLORS[label][1]}"' if s["corrected"] else ""
+                tip = f"{label} · set by you" if s["corrected"] else "not labelled by you yet"
+            else:
+                unsure = not s["corrected"] and s["confidence"] < MIN_CONFIDENCE
+                style = "" if label in PLAIN or unsure else f' style="background:{COLORS[label][1]}"'
+                tip = f'{label} · ' + ("set by you" if s["corrected"]
+                                       else f'{s["confidence"]:.0%} confident' + (", too unsure to highlight" * unsure))
             parts.append(f'<span class="pb-sent" data-id="{s["id"]}"{style} title="{tip}">'
                          f'{render_text(s["text"])}</span> ')
         place_figures(float("inf"))

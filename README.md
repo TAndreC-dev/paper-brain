@@ -53,6 +53,9 @@ Ask filters: label, firmness (hide hedged / only hedged), and one paper or all.
 | `pdf_to_sentences.py` | PyMuPDF text by page, cleaned, split into sentences; stops at References |
 | `db.py` | SQLite tables `papers` and `sentences`, `add_paper()`, `search()` |
 | `app.py` | Streamlit app |
+| `retrain.py` | Retrains with your hand labels, scores each labelled paper with a model that never saw it, and with `--apply` keeps the best model and relabels `brain.db` |
+| `import_highlights.py` | Saves the colours of a highlighted copy of a paper as your own labels |
+| `download.py` | Finds and downloads a free, legal copy of a cited paper (via OpenAlex); the only part that uses the internet, besides the first training-data download |
 
 **One detail worth explaining.** The training data has every number replaced by
 `@`, but real papers have real numbers. `normalize()` in `train.py` turns both
@@ -125,8 +128,9 @@ Conclusions totals 1,051, a close second.
   aren't really hedged.
 - Search matches words, not meaning: "heart attack" won't find "myocardial
   infarction".
-- The classifier sees one sentence at a time, with no idea where in the paper
-  it sits.
+- A fresh install's classifier sees one sentence at a time, with no idea where in
+  the paper it sits. After `python retrain.py --apply` it may also use context
+  (section, place in the paper, neighbouring sentences), if that scored best.
 
 ## Stretch ideas
 
@@ -157,7 +161,8 @@ the paper, neighbouring sentences), and context plus rule features (citations, f
 legends, interpreting words). `python retrain.py --apply` saves the best one and
 relabels `brain.db` only if it beats the original. Restart the app afterwards. To go back:
 copy `models/classifier.pubmed.joblib` over `models/classifier.joblib` and `brain.backup.db`
-over `brain.db`.
+over `brain.db`. `brain.backup.db` is made by the first `--apply` and never overwritten, so it
+does not hold labels you added after that.
 
 `python import_highlights.py "highlighted.pdf" PAPER_ID --apply` saves the colours of a
 highlighted copy of a paper as your own labels (see the top of that file for the colours).

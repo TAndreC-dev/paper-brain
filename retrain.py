@@ -154,8 +154,10 @@ def main() -> None:
         model = {"text": final, "context": stacker(hand_papers, int(rules)), "rules": rules}
     joblib.dump(model, MODEL_PATH, compress=3)
     # Relabel the library with the new model; your own labels are left alone.
-    src, dst = sqlite3.connect(db.DB_PATH), sqlite3.connect(db.DB_PATH.with_name("brain.backup.db"))
-    src.backup(dst); dst.close(); src.close()
+    backup = db.DB_PATH.with_name("brain.backup.db")
+    if not backup.exists():   # keep the copy from before the first --apply, so "go back" is a full undo
+        src, dst = sqlite3.connect(db.DB_PATH), sqlite3.connect(backup)
+        src.backup(dst); dst.close(); src.close()
     todo, labeled = [], []
     for rs in paper_rows.values():   # one paper at a time, in reading order: the context model needs that
         for r, pair in zip(rs, label_sentences(model, [r["text"] for r in rs], [r["section"] for r in rs])):
@@ -170,7 +172,7 @@ def main() -> None:
     db.backup_db()
     changed = sum(r["label"] != label for r, (label, _) in zip(todo, labeled))
     print(f"Saved {MODEL_PATH.name}; relabelled {len(todo)} sentences ({changed} changed). "
-          f"Old model: {ORIGINAL_PATH.name}; database before relabelling: brain.backup.db")
+          f"Old model: {ORIGINAL_PATH.name}; database before the first relabelling: brain.backup.db")
 
 
 if __name__ == "__main__":

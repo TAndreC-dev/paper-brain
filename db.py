@@ -179,7 +179,8 @@ def link_edits(db_path: Path | str = DB_PATH) -> dict[tuple[int, int], bool]:
 def list_papers(db_path: Path | str = DB_PATH) -> list[dict]:
     conn = connect(db_path)
     rows = conn.execute(
-        "SELECT p.id, p.title, p.filename, p.added_at, COUNT(s.id) AS n_sentences "
+        "SELECT p.id, p.title, p.filename, p.added_at, COUNT(s.id) AS n_sentences, "
+        "COALESCE(SUM(s.corrected), 0) AS n_mine "
         "FROM papers p LEFT JOIN sentences s ON s.paper_id = p.id "
         "GROUP BY p.id ORDER BY p.added_at DESC, p.id DESC"
     ).fetchall()

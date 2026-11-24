@@ -50,5 +50,26 @@ assert warned(), "no warning for a paper without section headings"
 at.selectbox(key="read_paper").set_value(f"A check paper with headings (#{with_headings})").run()
 assert not at.exception, at.exception
 assert not warned(), "warning shown for a paper that has section headings"
+
+# Hiding model labels: the model's guesses vanish, your own label (here Methods) still shows in colour.
+first = db.get_sentences(with_headings)[0]["id"]
+db.set_labels([first], "Methods")
+page = lambda: " ".join(m.value for m in at.markdown)   # noqa: E731
+at.run()
+assert "% confident" in page(), "normal mode should show the model's confidence"
+at.checkbox(key="blind").check().run()
+assert not at.exception, at.exception
+assert "% confident" not in page() and "not labelled by you yet" in page(), "model labels still visible"
+assert f'data-id="{first}" style="background:rgba(29,100,192,0.09)" title="Methods · set by you"' in page(), \
+    "your own Methods label is not shown in colour"
+
+# Delete sits behind a confirmation that says how many of your labels go with the paper.
+at.run()
+confirm = at.button(key=f"del{with_headings}")
+assert confirm.label == "Delete for good (1 of your labels)", confirm.label
+assert with_headings in {p["id"] for p in db.list_papers()}, "the paper went before the confirmation was clicked"
+confirm.click().run()
+assert not at.exception, at.exception
+assert with_headings not in {p["id"] for p in db.list_papers()}, "confirming did not delete the paper"
 assert (REAL_DB.stat().st_mtime if REAL_DB.exists() else None) == real_before, "the real brain.db was touched"
 print("APP OK")
