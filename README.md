@@ -33,13 +33,14 @@ Everything you add stays in this folder: `brain.db` (sentences, labels, your cor
 and `papers/` (the PDFs). To back up, copy those two. Automatic backups are off; to turn
 them on, set `BACKUP_DIR` at the top of `db.py` to a folder.
 
-## The three tabs
+## The four tabs
 
 | Tab | What you do | What happens |
 |---|---|---|
 | Add | Upload a PDF | Text is split into sentences, each labeled and checked for hedging, then saved |
 | Ask | Type a search, pick filters | Top matching sentences from all saved papers, each with paper title and page |
 | Read | Pick a saved paper | The paper sentence by sentence, color-coded by label, hedges underlined |
+| Map | Look at your library | Papers linked by who cites whom; click one to read it |
 
 Ask filters: label, firmness (hide hedged / only hedged), and one paper or all.
 
@@ -77,7 +78,7 @@ that never saw its labels (`python retrain.py`):
 | Model | Held-out accuracy |
 |---|---:|
 | PubMed only (what a fresh install uses) | 57.4% |
-| Retrained with the author's hand labels | 66.3% |
+| Retrained with the author's hand labels | 66.6% |
 | + context (section, place in the paper, neighbouring sentences) | 67.3% |
 | + context + rule features (citations, figure legends, interpreting words) | 70.0% |
 
@@ -86,12 +87,18 @@ that never saw its labels (`python retrain.py`):
 `python retrain.py` (see "Retraining on your own papers" below). They were measured on the
 author's own 8 papers, so your results after labelling your papers will differ.
 
+**An honest caveat:** the features and settings (context, rule features, how much a hand label
+counts) were developed while looking at these same 8 papers. So 70.0% is likely a little
+optimistic, and it has not yet been confirmed on a fresh paper that played no part in building
+the model.
+
 It works best on standard research articles (Introduction, Methods, Results, Discussion) and less
 well on reviews and reports, which often have no standard headings. Per-paper scores vary by
 about ±10 points, so one paper's score is only a rough guide.
 
 Learning curve: retrained on 2, 4, 6 and 7 papers it scored 59.4%, 64.3%, 65.8% and 66.3%, so
-more labels still help, but each extra paper adds less.
+more labels still help, but each extra paper adds less (measured by the author with an experiment
+script not included in this repo).
 
 PubMed details:
 
@@ -140,7 +147,8 @@ Conclusions totals 1,051, a close second.
 
 ## Labelling rules
 
-Two highlightings of the same paper agreed on 86% of sentences; these rules settle the rest.
+Two highlightings of the same paper agreed on 86% of sentences (measured by the author with an
+experiment script not included in this repo); these rules settle the rest.
 The Read tab shows them under "Labelling rules". Highlight PDFs and correct in Read by them.
 
 1. A sentence that interprets ("therefore", "likely", "suggests", "our data support") is
@@ -151,6 +159,22 @@ The Read tab shows them under "Labelling rules". Highlight PDFs and correct in R
 4. Someone else's finding cited anywhere ("Xu et al. found…", "personal communication") is
    Background.
 5. Headings, titles and pointers like "Refer to Table 4" are left unhighlighted.
+
+## Labelling blind
+
+Seeing the model's guess while you label can nudge you towards it, and labels made that way
+make the model look better than it is. To label without that nudge, tick **Hide model labels
+while I label** in Read:
+
+- Sentences you haven't labelled show as plain text, and their tooltip says "not labelled by you
+  yet" instead of the model's guess and confidence.
+- Sentences you have labelled show in their label's colour, Background and Methods included.
+- The "Show labels" filter and the keyword panel are switched off, since they would reveal the
+  model's guesses.
+- The label menu (click or select sentences) offers all four labels, including **Methods**, plus
+  "Remove highlight".
+
+The Ask tab still shows the model's labels, so avoid it while labelling a paper blind.
 
 ## Retraining on your own papers
 
@@ -170,7 +194,8 @@ highlighted copy of a paper as your own labels (see the top of that file for the
 The measured numbers are under "Results" above.
 Tried and dropped: labels made from section headings (lowered the score by 5 points once
 there were enough hand labels) and a small local language model (fingerprints alone scored
-7 points below word counts).
+7 points below word counts; measured by the author with an experiment script not included in
+this repo).
 
 ## Credits
 
